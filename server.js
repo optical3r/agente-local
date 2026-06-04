@@ -1,0 +1,152 @@
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const {
+  configurePrinters,
+  print,
+  testPrinter,
+  getStatus,
+  getConfig
+} = require('./printer');
+
+const app = express();
+const PORT = 3000;
+
+// Criar pasta logs/ se não existir
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+  console.log('📁 Pasta logs/ criada');
+}
+
+// Middlewares
+app.use(cors());
+app.use(express.json());
+
+// Logs de requests
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
+// Configurar impressoras
+app.post('/api/configure', async (req, res) => {
+  try {
+    const config = req.body;
+    console.log('📋 Configurando impressoras:', JSON.stringify(config, null, 2));
+
+    const result = await configurePrinters(config);
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao configurar:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Imprimir
+app.post('/api/print', async (req, res) => {
+  try {
+    const payload = req.body;
+    console.log('🖨️ Imprimindo:', {
+      type: payload.type,
+      destination: payload.destination,
+      orderNumber: payload.data?.orderNumber
+    });
+
+    const result = await print(payload);
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao imprimir:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Testar impressora do balcão
+app.post('/api/test/balcao', async (req, res) => {
+  try {
+    console.log('🧪 Testando balcão...');
+    const result = await testPrinter('balcao');
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao testar balcão:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Testar impressora da cozinha
+app.post('/api/test/cozinha', async (req, res) => {
+  try {
+    console.log('🧪 Testando cozinha...');
+    const result = await testPrinter('cozinha');
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao testar cozinha:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Obter status
+app.get('/api/status', async (req, res) => {
+  try {
+    const result = await getStatus();
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao obter status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Obter configuração
+app.get('/api/config', async (req, res) => {
+  try {
+    const result = await getConfig();
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao obter config:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log('');
+  console.log('🚀 ======================================');
+  console.log('🚀 AGENTE LOCAL DE IMPRESSÃO');
+  console.log('🚀 ======================================');
+  console.log(`🚀 Rodando em: http://localhost:${PORT}`);
+  console.log('🚀 Health: http://localhost:3000/health');
+  console.log('🚀 ======================================');
+  console.log('');
+});
+
+module.exports = app;

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Agente Local - Navegador</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖨️ Teste do Agente Local de Impressão</h1>
+
+        <div class="section">
+            <h2>1️⃣ Verificar Agente</h2>
+            <button onclick="verificarAgente()">Testar Conexão</button>
+            <div id="statusAgente"></div>
+        </div>
+
+        <div class="section">
+            <h2>2️⃣ Ver Configuração</h2>
+            <button onclick="verConfig()">Ver Config</button>
+            <div id="configResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>3️⃣ Configurar Impressoras</h2>
+            <p>Configure os IPs das impressoras (altere conforme sua rede):</p>
+            <label>IP Balcão: <input type="text" id="ipBalcao" value="192.168.1.100"></label><br><br>
+            <label>IP Cozinha: <input type="text" id="ipCozinha" value="192.168.1.101"></label><br><br>
+            <button onclick="configurarImpressoras()">Configurar</button>
+            <div id="configStatus"></div>
+        </div>
+
+        <div class="section">
+            <h2>4️⃣ Testar Impressão</h2>
+            <button onclick="testarBalcao()">Testar Balcão</button>
+            <button onclick="testarCozinha()">Testar Cozinha</button>
+            <div id="testeStatus"></div>
+        </div>
+
+        <div class="section">
+            <h2>5️⃣ Imprimir Pedido de Exemplo</h2>
+            <button onclick="imprimirPedido()">Imprimir Pedido na Cozinha</button>
+            <div id="impressaoStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        const AGENTE_URL = 'http://localhost:3000';
+
+        async function verificarAgente() {
+            const statusDiv = document.getElementById('statusAgente');
+            statusDiv.innerHTML = '<div class="status warning">⏳ Verificando...</div>';
+
+            try {
+                const response = await fetch(`${AGENTE_URL}/health`);
+                const data = await response.json();
+
+                if (data.status === 'ok') {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Agente local está ONLINE!<br>
+                            Versão: ${data.version}<br>
+                            Timestamp: ${data.timestamp}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">❌ Agente respondeu mas status não é OK</div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ Erro ao conectar com o agente local<br>
+                        Erro: ${error.message}<br><br>
+                        <strong>Verifique:</strong><br>
+                        1. O agente está rodando? Execute: <code>pm2 status</code><br>
+                        2. Está acessando de localhost? (não pode ser IP remoto)
+                    </div>
+                `;
+            }
+        }
+
+        async function verConfig() {
+            const configDiv = document.getElementById('configResult');
+            configDiv.innerHTML = '<div class="status warning">⏳ Carregando configuração...</div>';
+
+            try {
+                const response = await fetch(`${AGENTE_URL}/api/config`);
+                const data = await response.json();
+
+                if (data.success) {
+                    configDiv.innerHTML = `
+                        <div class="status success">✅ Configuração atual:</div>
+                        <pre>${JSON.stringify(data.config, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                configDiv.innerHTML = `<div class="status error">❌ Erro: ${error.message}</div>`;
+            }
+        }
+
+        async function configurarImpressoras() {
+            const statusDiv = document.getElementById('configStatus');
+            const ipBalcao = document.getElementById('ipBalcao').value;
+            const ipCozinha = document.getElementById('ipCozinha').value;
+
+            statusDiv.innerHTML = '<div class="status warning">⏳ Configurando...</div>';
+
+            try {
+                const response = await fetch(`${AGENTE_URL}/api/configure`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        balcao: {
+                            type: 'i8_network',
+                            ip: ipBalcao,
+                            port: 9100
+                        },
+                        cozinha: {
+                            type: 'i8_network',
+                            ip: ipCozinha,
+                            port: 9100
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Impressoras configuradas!<br>
+                            Balcão: ${ipBalcao}:9100<br>
+                            Cozinha: ${ipCozinha}:9100
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ Erro: ${data.error}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Erro: ${error.message}</div>`;
+            }
+        }
+
+        async function testarBalcao() {
+            await testarImpressora('balcao');
+        }
+
+        async function testarCozinha() {
+            await testarImpressora('cozinha');
+        }
+
+        async function testarImpressora(destino) {
+            const statusDiv = document.getElementById('testeStatus');
+            statusDiv.innerHTML = `<div class="status warning">⏳ Testando ${destino}...</div>`;
+
+            try {
+                const response = await fetch(`${AGENTE_URL}/api/test/${destino}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Teste de ${destino} enviado!<br>
+                            A impressora deve ter impresso uma comanda de teste.
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="status error">
+                            ❌ Erro ao testar ${destino}<br>
+                            ${data.error || data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Erro: ${error.message}</div>`;
+            }
+        }
+
+        async function imprimirPedido() {
+            const statusDiv = document.getElementById('impressaoStatus');
+            statusDiv.innerHTML = '<div class="status warning">⏳ Imprimindo pedido de exemplo...</div>';
+
+            const pedidoExemplo = {
+                destination: 'cozinha',
+                type: 'order',
+                data: {
+                    pizzariaName: 'Pizzaria Teste',
+                    orderNumber: '123',
+                    items: [
+                        {
+                            quantity: 1,
+                            name: 'Pizza Calabresa G',
+                            total: 45.00,
+                            observations: 'Sem cebola'
+                        },
+                        {
+                            quantity: 2,
+                            name: 'Coca-Cola 2L',
+                            total: 20.00
+                        }
+                    ],
+                    total: 65.00,
+                    payment: {
+                        method: 'Dinheiro',
+                        paid: 70.00,
+                        change: 5.00
+                    }
+                },
+                options: {
+                    cutPaper: true,
+                    feedLines: 3
+                }
+            };
+
+            try {
+                const response = await fetch(`${AGENTE_URL}/api/print`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pedidoExemplo)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Pedido impresso com sucesso!<br>
+                            Destino: ${data.destination}<br>
+                            IP: ${data.ip}:${data.port}<br>
+                            Linhas: ${data.lines}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="status error">
+                            ❌ Erro ao imprimir<br>
+                            ${data.error || data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Erro: ${error.message}</div>`;
+            }
+        }
+
+        // Verificar automaticamente ao carregar
+        window.onload = () => {
+            verificarAgente();
+        };
+    </script>
+</body>
+</html>
