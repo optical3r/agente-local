@@ -7,7 +7,8 @@ const {
   print,
   testPrinter,
   getStatus,
-  getConfig
+  getConfig,
+  listSerialPorts
 } = require('./printer');
 
 const app = express();
@@ -130,6 +131,26 @@ app.get('/api/config', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('❌ Erro ao obter config:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Listar portas seriais disponíveis
+app.get('/api/ports', async (req, res) => {
+  try {
+    console.log('📋 Listando portas seriais...');
+    const ports = await listSerialPorts();
+
+    res.json({
+      success: true,
+      ports: ports,
+      count: ports.length
+    });
+  } catch (error) {
+    console.error('❌ Erro ao listar portas:', error);
     res.status(500).json({
       success: false,
       error: error.message

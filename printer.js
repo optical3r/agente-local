@@ -1,6 +1,7 @@
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
+const { SerialPort } = require('serialport');
 const { formatOrder } = require('./formatter');
 
 const CONFIG_FILE = path.join(__dirname, 'config.json');
@@ -179,38 +180,189 @@ async function printToNetwork(ip, port, text, options = {}) {
   });
 }
 
+// Imprimir via USB/Serial (Elgin i8 compatível)
+async function printToUSB(comPort, text, options = {}) {
+  return new Promise((resolve, reject) => {
+    console.log(`🔌 Abrindo porta serial ${comPort}...`);
+
+    const port = new SerialPort({
+      path: comPort,
+      baudRate: options.baudRate || 9600,
+      dataBits: 8,
+      parity: 'none',
+      stopBits: 1,
+      autoOpen: false
+    });
+
+    // Timeout de abertura: 5 segundos
+    const openTimeout = setTimeout(() => {
+      port.close();
+      reject(new Error(`Timeout ao abrir porta ${comPort}`));
+    }, 5000);
+
+    port.open((err) => {
+      if (err) {
+        clearTimeout(openTimeout);
+        console.error(`❌ Erro ao abrir ${comPort}:`, err.message);
+        reject(new Error(`Erro ao abrir porta: ${err.message}`));
+        return;
+      }
+
+      clearTimeout(openTimeout);
+      console.log(`✅ Conectado em ${comPort}`);
+
+      try {
+        // SEQUÊNCIA CORRETA PARA ELGIN i8:
+
+        // 1. Inicializar impressora (limpa buffer, reseta configurações)
+        port.write(Buffer.from(CMD_INIT));
+
+        // Pequena pausa para processamento
+        setTimeout(() => {
+          // 2. Alinhar à esquerda (padrão)
+          port.write(Buffer.from(CMD_ALIGN_LEFT));
+
+          // 3. Imprimir texto linha por linha
+          const lines = text.split('\n');
+          lines.forEach(line => {
+            // Converter texto para buffer (UTF-8)
+            const lineBuffer = Buffer.from(line, 'utf8');
+            port.write(lineBuffer);
+
+            // Line feed
+            port.write(Buffer.from([0x0A]));
+          });
+
+          // 4. Avançar papel (se solicitado)
+          if (options.feedLines && options.feedLines > 0) {
+            const feedCmd = CMD_FEED(Math.min(options.feedLines, 255));
+            port.write(Buffer.from(feedCmd));
+          }
+
+          // Aguardar impressão completar antes de cortar
+          setTimeout(() => {
+            // 5. Cortar papel (se solicitado)
+            if (options.cutPaper) {
+              port.write(Buffer.from(CMD_CUT));
+            }
+
+            // 6. Abrir gaveta (se solicitado)
+            if (options.openDrawer) {
+              port.write(Buffer.from(CMD_DRAWER));
+            }
+
+            // Aguardar comandos finalizarem
+            setTimeout(() => {
+              port.close((closeErr) => {
+                if (closeErr) {
+                  console.warn(`⚠️ Aviso ao fechar ${comPort}:`, closeErr.message);
+                }
+              });
+
+              console.log(`✅ Impresso em ${comPort} (${lines.length} linhas)`);
+              resolve({
+                success: true,
+                message: `Impresso em ${comPort}`,
+                port: comPort,
+                lines: lines.length
+              });
+            }, 200); // 200ms para gaveta/corte
+
+          }, 100); // 100ms para impressão finalizar
+
+        }, 50); // 50ms para inicialização
+
+      } catch (error) {
+        port.close();
+        reject(error);
+      }
+    });
+
+    port.on('error', (error) => {
+      console.error(`❌ Erro porta ${comPort}:`, error.message);
+      reject(new Error(`Erro na porta serial: ${error.message}`));
+    });
+  });
+}
+
+// Listar portas seriais disponíveis
+async function listSerialPorts() {
+  try {
+    const ports = await SerialPort.list();
+    console.log(`📋 Portas seriais encontradas: ${ports.length}`);
+
+    return ports.map(port => ({
+      path: port.path,
+      manufacturer: port.manufacturer || 'Desconhecido',
+      serialNumber: port.serialNumber || '',
+      productId: port.productId || '',
+      vendorId: port.vendorId || ''
+    }));
+  } catch (error) {
+    console.error('❌ Erro ao listar portas:', error);
+    return [];
+  }
+}
+
 // Imprimir em uma impressora
 async function printToDestination(destination, payload) {
   const destConfig = destination === 'balcao' ? config.balcao : config.cozinha;
 
-  // Verificar se é impressora de rede
-  if (destConfig.type !== 'i8_network') {
-    return {
-      success: false,
-      error: `${destination} não está configurada como impressora de rede`
-    };
-  }
-
-  if (!destConfig.ip) {
-    return {
-      success: false,
-      error: `IP da ${destination} não configurado`
-    };
-  }
+  console.log(`🎯 Destino: ${destination}`);
+  console.log(`   Config:`, destConfig);
 
   // Formatar texto
   const text = payload.rawText || formatOrder(payload.data, payload.options);
 
-  // Imprimir
-  const result = await printToNetwork(
-    destConfig.ip,
-    destConfig.port || 9100,
-    text,
-    payload.options || {}
-  );
+  // Suporte USB/Serial
+  if (destConfig.type === 'usb' || destConfig.type === 'serial') {
+    if (!destConfig.port) {
+      return {
+        success: false,
+        error: `Porta COM não configurada para ${destination}`,
+        destination: destination
+      };
+    }
 
-  result.destination = destination;
-  return result;
+    const result = await printToUSB(
+      destConfig.port,
+      text,
+      payload.options || {}
+    );
+
+    result.destination = destination;
+    return result;
+  }
+
+  // Suporte TCP/IP (código existente)
+  if (destConfig.type === 'i8_network') {
+    if (!destConfig.ip) {
+      return {
+        success: false,
+        error: `IP da ${destination} não configurado`,
+        destination: destination
+      };
+    }
+
+    const port = destConfig.port || 9100;
+    const result = await printToNetwork(
+      destConfig.ip,
+      port,
+      text,
+      payload.options || {}
+    );
+
+    result.destination = destination;
+    result.port = port;
+    return result;
+  }
+
+  // Tipo não suportado
+  return {
+    success: false,
+    error: `Tipo de impressora não suportado: ${destConfig.type}. Use 'i8_network', 'usb' ou 'serial'`,
+    destination: destination
+  };
 }
 
 // Imprimir (suporta balcão/cozinha/ambos)
@@ -344,5 +496,6 @@ module.exports = {
   print,
   testPrinter,
   getStatus,
-  getConfig
+  getConfig,
+  listSerialPorts
 };
