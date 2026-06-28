@@ -6,12 +6,47 @@ O agente local agora suporta **impressoras USB/Serial** além de TCP/IP!
 
 ---
 
+## ⚠️ PRÉ-REQUISITO OBRIGATÓRIO para Elgin i8 por USB: porta COM virtual
+
+> **Leia isto ANTES de configurar USB.** É a causa nº 1 de "o agente não acha a impressora".
+
+O agente fala com a impressora USB através de uma **porta serial (COM)**. Porém, a
+**Elgin i8 conectada por USB NÃO cria uma porta COM automaticamente** — por padrão o
+Windows a reconhece como *dispositivo de impressão USB* (USB001), e não como porta serial.
+
+Enquanto isso não for resolvido:
+- `GET /api/ports` retorna **lista vazia** (`{"ports":[],"count":0}`)
+- A impressão USB falha com **"Erro ao abrir porta"**, mesmo a impressora estando
+  ligada e imprimindo um teste pelo Windows.
+
+### Como resolver (uma vez, por PC)
+
+1. Instale o **driver oficial da Elgin** para a i8 (site da Elgin / CD de instalação).
+2. No driver/utilitário da Elgin, selecione o modo **"Porta Serial" / "Virtual COM"**
+   (alguns drivers chamam de *USB Virtual COM Port*). Isso cria uma `COMx` para a i8.
+3. Confirme no Windows: `Win + X` → **Gerenciador de Dispositivos** → expanda
+   **Portas (COM e LPT)** → a Elgin deve aparecer como `COMx` (ex.: `COM3`).
+4. Confirme pelo agente: `http://localhost:3000/api/ports` deve listar essa `COMx`.
+
+> Sem a porta COM virtual, **use a conexão de rede (i8_network)** — a i8 imprime por
+> USB nativo só via spooler do Windows, que este agente não usa.
+
+### Resumo do estado do suporte
+
+| Item | Status |
+|------|--------|
+| Código do agente para USB/Serial | ✅ Pronto (rotas, ESC/POS, `/api/ports`) |
+| i8 endereçável por USB | ⚠️ Depende do **driver de COM virtual** instalado no PC |
+| Conexão de rede (i8_network) | ✅ Funciona sem pré-requisito |
+
+---
+
 ## 📋 Tipos de Conexão Suportados
 
 | Tipo | Tecnologia | Configuração | Status |
 |------|------------|--------------|--------|
 | **TCP/IP** | Rede Ethernet | IP + Porta | ✅ Funciona |
-| **USB/Serial** | Porta COM | Porta COM | ✅ **NOVO!** |
+| **USB/Serial** | Porta COM (virtual) | Porta COM | ✅ requer driver COM virtual |
 
 ---
 
@@ -20,7 +55,9 @@ O agente local agora suporta **impressoras USB/Serial** além de TCP/IP!
 ### **1️⃣ Conectar a Impressora**
 
 1. **Conecte o cabo USB** da impressora no computador
-2. **Instale o driver** da impressora (se necessário)
+2. **Instale o driver + ative a porta COM virtual** — ver a seção
+   ["PRÉ-REQUISITO OBRIGATÓRIO"](#️-pré-requisito-obrigatório-para-elgin-i8-por-usb-porta-com-virtual)
+   acima. Sem isso a i8 não vira uma porta COM e o agente não a encontra.
 3. **Verifique a porta COM** no Gerenciador de Dispositivos:
    - Aperte `Win + X` → **Gerenciador de Dispositivos**
    - Expanda **Portas (COM e LPT)**
