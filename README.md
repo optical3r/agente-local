@@ -4,6 +4,9 @@ Servidor Node.js que recebe requisições HTTP do navegador e imprime em impress
 
 **✅ AUTO-INICIA COM O WINDOWS** (usando PM2)
 
+> 📦 **Instalando em um PC novo a partir do GitHub?**
+> Siga o guia [INSTALAR-EM-OUTRO-PC.md](INSTALAR-EM-OUTRO-PC.md).
+
 ---
 
 ## 🚀 Instalação Rápida
