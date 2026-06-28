@@ -75,7 +75,10 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit (New-TimeSpan -Hours 0)
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Highest
+# RunLevel Limited (nivel normal): pm2 resurrect nao precisa de elevacao.
+# Usar Highest deixaria o daemon PM2 inacessivel a comandos pm2 de terminais
+# nao-elevados (erro EPERM no pipe rpc.sock).
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal `
