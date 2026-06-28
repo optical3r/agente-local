@@ -1,30 +1,62 @@
 # 📦 Guia de Instalação Completo
 
-## 🚀 Instalação como Serviço Windows (Recomendado)
+## 🚀 Instalação com Auto-Start (Recomendado)
 
-### **Responde sua pergunta: SIM, inicia automaticamente após reiniciar!**
+### **SIM — inicia automaticamente ao ligar/reiniciar o PC.**
+
+O auto-start usa uma **Tarefa Agendada do Windows** que roda `pm2 resurrect` no
+logon, restaurando o agente que o PM2 salvou. Esta abordagem substitui o antigo
+`pm2-windows-service`, que é instável no Windows 11 (não ressuscitava o agente
+após o reboot — daí o agente "sumir" depois de reiniciar).
 
 ### Pré-requisitos
 
 1. ✅ **Node.js 16+** instalado ([baixar](https://nodejs.org))
-2. ✅ **Executar como Administrador**
+2. ✅ Vai pedir **elevação (Administrador)** — necessário só para registrar a tarefa.
 
 ### Instalação em 1 Clique
 
-1. **Abra PowerShell como Administrador** (botão direito → Executar como administrador)
+1. **Dê duplo-clique em `INSTALAR.bat`**
+   (ou clique direito → "Executar como administrador").
+   O próprio script solicita elevação via UAC.
 
-2. **Execute:**
-
-```bash
-cd c:\Users\rodri\Documents\Impressoras\agente-impressao-local
-.\install-service.bat
-```
+2. O instalador irá:
+   - Verificar Node.js e instalar o PM2 se faltar
+   - Rodar `npm install`
+   - Iniciar o agente e salvar o estado (`pm2 save`)
+   - Criar a Tarefa Agendada `AgenteImpressaoJackJango` (gatilho: logon, +30s)
 
 3. **Pronto!** O agente agora:
-   - ✅ Inicia automaticamente com o Windows
-   - ✅ Reinicia se travar
+   - ✅ Inicia automaticamente ao ligar/reiniciar o Windows
+   - ✅ Reinicia sozinho se travar (PM2 `autorestart`)
    - ✅ Salva logs em `.\logs\`
    - ✅ Roda em `http://localhost:3000`
+
+### Testar o auto-start SEM reiniciar o PC
+
+```powershell
+# Mata o PM2 (simula o desligamento) e dispara a tarefa de boot:
+pm2 kill
+schtasks /Run /TN AgenteImpressaoJackJango
+
+# Aguarde alguns segundos e confirme:
+curl http://localhost:3000/health
+# Deve responder {"status":"online",...}
+```
+
+### Desinstalar o auto-start
+
+Dê duplo-clique em **`DESINSTALAR.bat`** (remove a tarefa agendada e tira o agente do PM2).
+
+---
+
+## ⚙️ Como funciona (detalhe técnico)
+
+- `pm2 save` grava os processos ativos em `%USERPROFILE%\.pm2\dump.pm2`.
+- No logon, a Tarefa Agendada executa `pm2 resurrect`, que lê esse dump e sobe o agente.
+- O PM2 mantém o processo vivo (reinicia se cair, até o limite de memória do `ecosystem.config.js`).
+- **Importante:** sempre que mudar a configuração de processos do PM2, rode `pm2 save`
+  de novo, senão o `resurrect` restaura o estado antigo.
 
 ### Verificar se Está Rodando
 
