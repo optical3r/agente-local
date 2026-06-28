@@ -314,6 +314,13 @@ async function printToDestination(destination, payload) {
   // Formatar texto
   const text = payload.rawText || formatOrder(payload.data, payload.options);
 
+  // Gaveta abre SOMENTE no balcão (requisito do contrato).
+  // Clona options removendo openDrawer quando não for o slot balcão.
+  const baseOptions = payload.options || {};
+  const options = (destination === 'balcao')
+    ? baseOptions
+    : { ...baseOptions, openDrawer: false };
+
   // Suporte USB/Serial
   if (destConfig.type === 'usb' || destConfig.type === 'serial') {
     if (!destConfig.port) {
@@ -327,15 +334,15 @@ async function printToDestination(destination, payload) {
     const result = await printToUSB(
       destConfig.port,
       text,
-      payload.options || {}
+      options
     );
 
     result.destination = destination;
     return result;
   }
 
-  // Suporte TCP/IP (código existente)
-  if (destConfig.type === 'i8_network') {
+  // Suporte TCP/IP. 'm8_internal' é tratado como rede (i8_network) por configuração.
+  if (destConfig.type === 'i8_network' || destConfig.type === 'm8_internal') {
     if (!destConfig.ip) {
       return {
         success: false,
@@ -349,7 +356,7 @@ async function printToDestination(destination, payload) {
       destConfig.ip,
       port,
       text,
-      payload.options || {}
+      options
     );
 
     result.destination = destination;
@@ -360,7 +367,7 @@ async function printToDestination(destination, payload) {
   // Tipo não suportado
   return {
     success: false,
-    error: `Tipo de impressora não suportado: ${destConfig.type}. Use 'i8_network', 'usb' ou 'serial'`,
+    error: `Tipo de impressora não suportado: ${destConfig.type}. Use 'i8_network', 'm8_internal', 'usb' ou 'serial'`,
     destination: destination
   };
 }
@@ -456,15 +463,31 @@ async function checkPrinter(ip, port) {
   });
 }
 
+// Verifica disponibilidade de um slot conforme o tipo de conexão
+async function checkSlot(slotConfig) {
+  if (!slotConfig) return false;
+
+  // Rede (i8_network ou m8_internal configurado como rede): testa socket TCP
+  if (slotConfig.type === 'i8_network' || slotConfig.type === 'm8_internal') {
+    return slotConfig.ip
+      ? await checkPrinter(slotConfig.ip, slotConfig.port || 9100)
+      : false;
+  }
+
+  // USB/Serial: disponível se a porta COM configurada existir na lista
+  if (slotConfig.type === 'usb' || slotConfig.type === 'serial') {
+    if (!slotConfig.port) return false;
+    const ports = await listSerialPorts();
+    return ports.some(p => p.path === slotConfig.port);
+  }
+
+  return false;
+}
+
 // Obter status
 async function getStatus() {
-  const balcaoAvailable = config.balcao.type === 'i8_network' && config.balcao.ip
-    ? await checkPrinter(config.balcao.ip, config.balcao.port || 9100)
-    : false;
-
-  const cozinhaAvailable = config.cozinha.type === 'i8_network' && config.cozinha.ip
-    ? await checkPrinter(config.cozinha.ip, config.cozinha.port || 9100)
-    : false;
+  const balcaoAvailable = await checkSlot(config.balcao);
+  const cozinhaAvailable = await checkSlot(config.cozinha);
 
   return {
     success: true,

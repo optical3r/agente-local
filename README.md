@@ -42,9 +42,9 @@ curl http://localhost:3000/health
 **Resposta:**
 ```json
 {
-  "status": "ok",
-  "timestamp": "2026-06-03T...",
-  "version": "1.0.0"
+  "status": "online",
+  "agent_version": "1.1.0",
+  "uptime_seconds": 123
 }
 ```
 

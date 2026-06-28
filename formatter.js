@@ -1,5 +1,14 @@
 const WIDTH = 32;
 
+// ESC/POS para destaque da senha (passados inline; o writer envia byte a byte)
+const ESC = '\x1B';
+const GS = '\x1D';
+const BOLD_ON = ESC + 'E\x01';
+const BOLD_OFF = ESC + 'E\x00';
+// GS ! n — tamanho do caractere (nibble alto = altura, baixo = largura)
+const SIZE_LARGE = GS + '!\x11';   // dobro de altura e largura
+const SIZE_NORMAL = GS + '!\x00';
+
 // Quebrar linha respeitando palavras
 function wrapLine(text, maxWidth) {
   if (text.length <= maxWidth) return [text];
@@ -66,9 +75,22 @@ function formatOrder(data, options = {}) {
   lines.push('');
   lines.push(separator('-'));
 
-  // Número do pedido e senha
+  // Número do pedido e senha (com destaque opcional)
   if (data.senha) {
-    lines.push(center(`SENHA: ${data.senha}`));
+    const large = options.passwordFontSize === 'large';
+    const bold = options.passwordBold;
+
+    if (large || bold) {
+      // Quando ampliada, cada caractere ocupa o dobro -> centraliza com metade da largura
+      const senhaText = `SENHA: ${data.senha}`;
+      const effWidth = large ? Math.floor(WIDTH / 2) : WIDTH;
+      const pad = Math.max(0, Math.floor((effWidth - senhaText.length) / 2));
+      const prefix = (bold ? BOLD_ON : '') + (large ? SIZE_LARGE : '');
+      const suffix = (large ? SIZE_NORMAL : '') + (bold ? BOLD_OFF : '');
+      lines.push(prefix + ' '.repeat(pad) + senhaText + suffix);
+    } else {
+      lines.push(center(`SENHA: ${data.senha}`));
+    }
   }
   lines.push(center(`Pedido: ${data.orderNumber}`));
   lines.push(separator('-'));
@@ -81,9 +103,18 @@ function formatOrder(data, options = {}) {
       const itemName = `${item.quantity}x ${item.name}`;
       wrapLine(itemName, WIDTH).forEach(l => lines.push(l));
 
-      // Preço
-      if (item.total !== undefined) {
-        const priceStr = formatPrice(item.total);
+      // Preço unitário (quando informado e quantidade > 1)
+      if (item.price !== undefined && item.quantity > 1) {
+        const unitStr = `  ${item.quantity} x ${formatPrice(item.price)}`;
+        lines.push(unitStr);
+      }
+
+      // Total do item (fallback: price * quantity)
+      const itemTotal = item.total !== undefined
+        ? item.total
+        : (item.price !== undefined ? item.price * item.quantity : undefined);
+      if (itemTotal !== undefined) {
+        const priceStr = formatPrice(itemTotal);
         lines.push(' '.repeat(WIDTH - priceStr.length) + priceStr);
       }
 

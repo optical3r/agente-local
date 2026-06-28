@@ -13,6 +13,8 @@ const {
 
 const app = express();
 const PORT = 3000;
+const AGENT_VERSION = require('./package.json').version;
+const START_TIME = Date.now();
 
 // Criar pasta logs/ se não existir
 const logsDir = path.join(__dirname, 'logs');
@@ -21,8 +23,30 @@ if (!fs.existsSync(logsDir)) {
   console.log('📁 Pasta logs/ criada');
 }
 
+// Origens autorizadas (PWA). Configurável via ALLOWED_ORIGINS (separado por vírgula).
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [
+      'https://pizza-bahia-connect.vercel.app',
+      'http://localhost:5173'
+    ]
+);
+
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    // Permite requests sem Origin (curl, mesma máquina) e as origens autorizadas.
+    // Origem não autorizada: responde sem o header de permissão (callback(null,false))
+    // em vez de lançar erro — o navegador bloqueia, mas não geramos HTTP 500.
+    const allowed = !origin || ALLOWED_ORIGINS.includes(origin);
+    if (!allowed) {
+      console.warn(`⚠️ Origem não autorizada bloqueada: ${origin}`);
+    }
+    return callback(null, allowed);
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
 
 // Logs de requests
@@ -31,12 +55,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
+// Health check (contrato do PWA)
 app.get('/health', (req, res) => {
   res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    status: 'online',
+    agent_version: AGENT_VERSION,
+    uptime_seconds: Math.floor((Date.now() - START_TIME) / 1000)
   });
 });
 
